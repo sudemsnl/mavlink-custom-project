@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<mavlink>
+
+  <include>../mavlink/message_definitions/v1.0/common.xml</include>
+
+  <messages>
+
+    <message id="42000" name="SYSTEM_EXTENSION_STATUS">
+      <description>
+        Status information from onboard extension systems such as AI modules or auxiliary sensors.
+      </description>
+
+      <field type="float" name="cpu_load"/>
+      <field type="float" name="temperature"/>
+      <field type="uint8_t" name="health_state"/>
+      <field type="uint32_t" name="uptime_ms"/>
+
+    </message>
+
+  </messages>
+
+</mavlink>
+
