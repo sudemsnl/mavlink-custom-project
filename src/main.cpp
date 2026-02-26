@@ -33,7 +33,7 @@ int main() {
     std::cout << "Msg ID: " << msg.msgid << std::endl;
     std::cout << "Packet length: " << len << std::endl;
 
-    // Bonus: decode ederek doğrulayalım
+    //decode ederek doğrulayalım
     mavlink_system_extension_status_t decoded;
     mavlink_msg_system_extension_status_decode(&msg, &decoded);
 
