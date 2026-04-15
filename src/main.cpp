@@ -1,46 +1,188 @@
 #include <iostream>
+#include <iomanip>
+#include <thread>
+#include <chrono>
+#include <cstring>
 #include <cstdint>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+#else
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
+
 extern "C" {
-    // Custom dialect'in ana header'ı
-    #include "../generated_custom/system_extension/mavlink.h"
+#include "../generated_custom/system_extension/mavlink.h"
 }
 
-int main() {
-    mavlink_message_t msg;
+static uint64_t now_ms()
+{
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(
+        steady_clock::now().time_since_epoch()
+    ).count();
+}
+
+static bool init_socket(
+#ifdef _WIN32
+    SOCKET &sock,
+#else
+    int &sock,
+#endif
+    sockaddr_in &target_addr,
+    const char* ip,
+    int port
+)
+{
+#ifdef _WIN32
+    WSADATA wsaData{};
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cerr << "WSAStartup failed\n";
+        return false;
+    }
+
+    sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (sock == INVALID_SOCKET) {
+        std::cerr << "Socket creation failed\n";
+        return false;
+    }
+#else
+    sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) {
+        std::cerr << "Socket creation failed\n";
+        return false;
+    }
+#endif
+
+    std::memset(&target_addr, 0, sizeof(target_addr));
+    target_addr.sin_family = AF_INET;
+    target_addr.sin_port = htons(port);
+
+    if (inet_pton(AF_INET, ip, &target_addr.sin_addr) <= 0) {
+        std::cerr << "Invalid target IP\n";
+        return false;
+    }
+
+    return true;
+}
+
+static bool send_mavlink_message(
+#ifdef _WIN32
+    SOCKET sock,
+#else
+    int sock,
+#endif
+    const sockaddr_in &target_addr,
+    const mavlink_message_t &msg
+)
+{
     uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
-
-    // Custom mesaj alanlarımız
-    float cpu_load = 37.5f;          // %
-    float temperature = 52.3f;       // Celsius
-    uint8_t health_state = 0;        // 0=OK, 1=WARNING, 2=ERROR
-    uint32_t uptime_ms = 1234567;    // ms
-
-    // SYSTEM_EXTENSION_STATUS mesajını pack et
-    // (sistem id=1, component id=200 örnek)
-    mavlink_msg_system_extension_status_pack(
-        1, 200, &msg,
-        cpu_load,
-        temperature,
-        health_state,
-        uptime_ms
-    );
-
-    // Byte buffer'a çevir
     uint16_t len = mavlink_msg_to_send_buffer(buffer, &msg);
 
-    std::cout << "Custom MAVLink mesaj encode edildi!" << std::endl;
-    std::cout << "Msg ID: " << msg.msgid << std::endl;
-    std::cout << "Packet length: " << len << std::endl;
+    int sent = sendto(
+        sock,
+        reinterpret_cast<const char*>(buffer),
+        len,
+        0,
+        reinterpret_cast<const sockaddr*>(&target_addr),
+        sizeof(target_addr)
+    );
 
-    //decode ederek doğrulayalım
-    mavlink_system_extension_status_t decoded;
-    mavlink_msg_system_extension_status_decode(&msg, &decoded);
+    return sent == len;
+}
 
-    std::cout << "Decoded cpu_load: " << decoded.cpu_load << std::endl;
-    std::cout << "Decoded temperature: " << decoded.temperature << std::endl;
-    std::cout << "Decoded health_state: " << (int)decoded.health_state << std::endl;
-    std::cout << "Decoded uptime_ms: " << decoded.uptime_ms << std::endl;
+int main()
+{
+#ifdef _WIN32
+    SOCKET sock;
+#else
+    int sock;
+#endif
+    sockaddr_in target_addr{};
+
+    const char* target_ip = "127.0.0.1";
+    const int target_port = 14550;
+
+    if (!init_socket(sock, target_addr, target_ip, target_port)) {
+        return 1;
+    }
+
+    const uint8_t system_id = 1;
+    const uint8_t component_id = 191; // companion-computer benzeri bir ID
+
+    std::cout << "UDP MAVLink sender started -> "
+              << target_ip << ":" << target_port << "\n";
+
+    float cpu_load = 25.0f;
+    float temperature = 41.5f;
+    uint8_t health_state = 1;
+    uint32_t uptime_ms = 0;
+
+    while (true)
+    {
+        {
+            mavlink_message_t heartbeat_msg{};
+            mavlink_msg_heartbeat_pack(
+                system_id,
+                component_id,
+                &heartbeat_msg,
+                MAV_TYPE_ONBOARD_CONTROLLER,
+                MAV_AUTOPILOT_INVALID,
+                0,
+                0,
+                MAV_STATE_ACTIVE
+            );
+
+            if (!send_mavlink_message(sock, target_addr, heartbeat_msg)) {
+                std::cerr << "HEARTBEAT send failed\n";
+            }
+        }
+
+        {
+            mavlink_message_t custom_msg{};
+            mavlink_msg_system_extension_status_pack(
+                system_id,
+                component_id,
+                &custom_msg,
+                cpu_load,
+                temperature,
+                health_state,
+                uptime_ms
+            );
+
+            if (!send_mavlink_message(sock, target_addr, custom_msg)) {
+                std::cerr << "CUSTOM message send failed\n";
+            } else {
+                std::cout << "[TX] SYSTEM_EXTENSION_STATUS | "
+                          << "cpu_load=" << std::fixed << std::setprecision(2) << cpu_load
+                          << " temp=" << temperature
+                          << " health=" << static_cast<int>(health_state)
+                          << " uptime_ms=" << uptime_ms
+                          << "\n";
+            }
+        }
+
+        cpu_load += 1.3f;
+        if (cpu_load > 95.0f) cpu_load = 15.0f;
+
+        temperature += 0.4f;
+        if (temperature > 72.0f) temperature = 40.0f;
+
+        uptime_ms += 1000;
+
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+
+#ifdef _WIN32
+    closesocket(sock);
+    WSACleanup();
+#else
+    close(sock);
+#endif
 
     return 0;
 }
