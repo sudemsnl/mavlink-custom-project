@@ -105,7 +105,7 @@ int main()
     sockaddr_in target_addr{};
 
     const char* target_ip = "127.0.0.1";
-    const int target_port = 14550;
+    const int target_port = 14551;
 
     if (!init_socket(sock, target_addr, target_ip, target_port)) {
         return 1;
