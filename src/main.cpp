@@ -111,8 +111,8 @@ int main()
         return 1;
     }
 
-    const uint8_t system_id = 1;
-    const uint8_t component_id = 191; // companion-computer benzeri bir ID
+    const uint8_t system_id = 2; //SITL de açık olacaksa çakışmaması için 2
+    const uint8_t component_id = MAV_COMP_ID_AUTOPILOT1; //autopilot componenti
 
     std::cout << "UDP MAVLink sender started -> "
               << target_ip << ":" << target_port << "\n";
@@ -130,11 +130,11 @@ int main()
                 system_id,
                 component_id,
                 &heartbeat_msg, //paketlenen mesaj buraya yazılıyor
-                MAV_TYPE_ONBOARD_CONTROLLER,
-                MAV_AUTOPILOT_INVALID,
+                MAV_TYPE_QUADROTOR,
+                MAV_AUTOPILOT_ARDUPILOTMEGA,
+                MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
                 0,
-                0,//base ve custom mode alanları
-                MAV_STATE_ACTIVE
+                MAV_STATE_ACTIVE //quadcopter tipinde ArduPilotMega beneri bir autopilotum
             );
 
             if (!send_mavlink_message(sock, target_addr, heartbeat_msg)) { //HEARBEAT artık udp ile gönderiliyor 
