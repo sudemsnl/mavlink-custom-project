@@ -24,17 +24,17 @@ static uint64_t now_ms()
     using namespace std::chrono;
     return duration_cast<milliseconds>(
         steady_clock::now().time_since_epoch()
-    ).count();
+    ).count(); //şimdilik kullanılmıyor. sistemin sabit çalışan saatinden geçen sğreyi ms çevirmek için
 }
 
 static bool init_socket(
 #ifdef _WIN32
-    SOCKET &sock,
+    SOCKET &sock, // referans ile main içindeki sock değişkenine gerçekten yazılır
 #else
     int &sock,
 #endif
     sockaddr_in &target_addr,
-    const char* ip,
+    const char* ip,// dışarıdan hedef IP ve port gönderimi
     int port
 )
 {
@@ -45,7 +45,7 @@ static bool init_socket(
         return false;
     }
 
-    sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); //UDP socket oluşturma, AF IPv4 SOCK_DGRAM UDP kullanılacak demek
     if (sock == INVALID_SOCKET) {
         std::cerr << "Socket creation failed\n";
         return false;
@@ -58,7 +58,7 @@ static bool init_socket(
     }
 #endif
 
-    std::memset(&target_addr, 0, sizeof(target_addr));
+    std::memset(&target_addr, 0, sizeof(target_addr)); //linux tarafı
     target_addr.sin_family = AF_INET;
     target_addr.sin_port = htons(port);
 
@@ -70,22 +70,22 @@ static bool init_socket(
     return true;
 }
 
-static bool send_mavlink_message(
+static bool send_mavlink_message( //MAVlink mesajını udp ile gönderir
 #ifdef _WIN32
     SOCKET sock,
 #else
     int sock,
 #endif
-    const sockaddr_in &target_addr,
-    const mavlink_message_t &msg
+    const sockaddr_in &target_addr, //mesajın gönderileceği hedef adres alınır
+    const mavlink_message_t &msg // gönderilecek MAVlink mesajı alınır
 )
 {
-    uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
+    uint8_t buffer[MAVLINK_MAX_PACKET_LEN]; // MAVLink mesajının byte haline çevrileceği kısım
     uint16_t len = mavlink_msg_to_send_buffer(buffer, &msg);
 
     int sent = sendto(
         sock,
-        reinterpret_cast<const char*>(buffer),
+        reinterpret_cast<const char*>(buffer), // buffer uint8_t tipinde ama sento için char tip dönüşümü yapılmalı
         len,
         0,
         reinterpret_cast<const sockaddr*>(&target_addr),
@@ -93,7 +93,7 @@ static bool send_mavlink_message(
     );
 
     return sent == len;
-}
+} //gönderme işlemi tamamlanıyor
 
 int main()
 {
@@ -122,29 +122,29 @@ int main()
     uint8_t health_state = 1;
     uint32_t uptime_ms = 0;
 
-    while (true)
+    while (true)// sürekli çalışma
     {
         {
             mavlink_message_t heartbeat_msg{};
             mavlink_msg_heartbeat_pack(
                 system_id,
                 component_id,
-                &heartbeat_msg,
+                &heartbeat_msg, //paketlenen mesaj buraya yazılıyor
                 MAV_TYPE_ONBOARD_CONTROLLER,
                 MAV_AUTOPILOT_INVALID,
                 0,
-                0,
+                0,//base ve custom mode alanları
                 MAV_STATE_ACTIVE
             );
 
-            if (!send_mavlink_message(sock, target_addr, heartbeat_msg)) {
+            if (!send_mavlink_message(sock, target_addr, heartbeat_msg)) { //HEARBEAT artık udp ile gönderiliyor 
                 std::cerr << "HEARTBEAT send failed\n";
             }
         }
 
         {
-            mavlink_message_t custom_msg{};
-            mavlink_msg_system_extension_status_pack(
+            mavlink_message_t custom_msg{}; //custom için Yenni bir MAVlink mesaj nesnesi oluşturuluyor
+            mavlink_msg_system_extension_status_pack(  // bu fonksiyon MAVLink XML dosyasından üretildi
                 system_id,
                 component_id,
                 &custom_msg,
