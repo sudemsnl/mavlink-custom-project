@@ -5,7 +5,7 @@
 
   <messages>
 
-    <message id="42000" name="SYSTEM_EXTENSION_STATUS">
+    <message id="20000" name="SYSTEM_EXTENSION_STATUS">
       <description>
         Status information from onboard extension systems such as AI modules or auxiliary sensors.
       </description>
